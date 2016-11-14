@@ -1,0 +1,8 @@
+from cmdb_client.plugins.linux import sysinfo
+
+def LinuxSysInfo():
+    return sysinfo.collect()
+
+def WindowsSysInfo():
+    from cmdb_client.plugins.windows import sysinfo as win_sysinfo
+    return win_sysinfo.collect()

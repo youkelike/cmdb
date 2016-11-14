@@ -32,11 +32,15 @@ class RAMViewSet(viewsets.ModelViewSet):
     serializer_class = RAMSerializer
 
 
-@api_view(['POST'])
-@permission_classes((permissions.AllowAny,))
+@api_view(['POST','GET'])#只允许列表中的请求方法
+@permission_classes((permissions.AllowAny,))#权限,在settings.REST_FRAMEWORK中定义
 def AssetList(request):
+    '''
+    django调用restframework的serializer和response定制自己的视图方法
+    '''
     if request.method == 'GET':
         asset_list = models.Asset.objects.all()
+        #many表示传入的是一个结果集，得到的结果是一个可序列化的OrderedDict
         serializer = AssetSerializer(asset_list,many=True)
         print(serializer.data)
         #使用restframework封装的Response

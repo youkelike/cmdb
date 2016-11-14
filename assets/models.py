@@ -222,7 +222,7 @@ class RaidAdaptor(models.Model):
         return self.name
 
 class Manufactory(models.Model):
-    manufactory = models.CharField(u'厂商名称',max_length=64, unique=True)
+    name = models.CharField(u'厂商名称',max_length=64, unique=True)
     support_num = models.CharField(u'支持电话',max_length=30,blank=True)
     memo = models.CharField(u'备注',max_length=128,blank=True)
 
@@ -230,7 +230,7 @@ class Manufactory(models.Model):
         verbose_name = u'厂商'
         verbose_name_plural = u"厂商"
     def __str__(self):
-        return self.manufactory
+        return self.name
 
 class BusinessUnit(models.Model):
     #自关联

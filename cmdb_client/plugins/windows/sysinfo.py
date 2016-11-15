@@ -23,8 +23,8 @@ def collect():
     data.update(win32obj.get_disk_info())
     data.update(win32obj.get_nic_info())
 
-    # for k,v in data.items():
-    #    print(k,v)
+    for k,v in data.items():
+       print(k,v)
     return data
 class Win32Info(object):
     def __init__(self):

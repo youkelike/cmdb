@@ -67,12 +67,13 @@ class Asset(object):
 
     def save_new_asset_to_approval_zone(self):
         asset_sn = self.clean_data.get('sn')
+        print('******ram',self.clean_data.get('ram'))
         asset_already_in_approval_zone,created = models.NewAssetApprovalZone.objects.update_or_create(sn=asset_sn,
                                                                                                       defaults={'data':json.dumps(self.clean_data),
                                                                                                         'manufactory':self.clean_data.get('manufactory'),
                                                                                                         'model':self.clean_data.get('model'),
                                                                                                         'asset_type':self.clean_data.get('asset_type'),
-                                                                                                        'ram_size':self.clean_data.get('ram_size'),
+                                                                                                        'ram_size':sum(i['capacity'] if 'capacity' in i else 0 for i in self.clean_data.get('ram')),
                                                                                                         'cpu_model':self.clean_data.get('cpu_model'),
                                                                                                         'cpu_count':self.clean_data.get('cpu_count'),
                                                                                                         'cpu_core_count':self.clean_data.get('cpu_core_count'),
@@ -129,7 +130,7 @@ class Asset(object):
 
     def __verify_field(self,data_set,field_key,data_type,required=True):
         field_val = data_set.get(field_key)
-        if field_val:
+        if field_val or field_val==0:
             try:
                 data_set[field_key] = data_type(field_val)
             except ValueError as e:
@@ -231,6 +232,7 @@ class Asset(object):
 
     def __create_disk_component(self):
         disk_info = self.clean_data.get('physical_disk_driver')
+        print('*****disk info:',disk_info)
         if disk_info:
             for disk_item in disk_info:
                 try:

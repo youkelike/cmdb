@@ -145,8 +145,8 @@ class RAM(models.Model):
     update_date = models.DateTimeField(u'更新时间', blank=True, null=True)
 
     class Meta:
-        verbose_name = u'RAM'
-        verbose_name_plural = u'RAM'
+        verbose_name = u'内存'
+        verbose_name_plural = u'内存'
         unique_together = ('asset','slot')
     auto_create_fields = ['sn','slot','model','capacity']
 
@@ -160,22 +160,22 @@ class Disk(models.Model):
     manufactory = models.CharField(u'制造商',max_length=64,blank=True,null=True)
     model = models.CharField(u'磁盘型号',max_length=128,blank=True,null=True)
     capacity = models.IntegerField(u'磁盘容量GB')
-    disk_iface_choice = (
+    iface_type_choice = (
         ('SATA','SATA'),
         ('SAS','SAS'),
         ('SCSI','SCSI'),
         ('SSD','SSD'),
     )
-    disk_iface = models.CharField(u'接口类型',choices=disk_iface_choice,max_length=32,default='SAS')
+    iface_type = models.CharField(u'接口类型',choices=iface_type_choice,max_length=32,default='SAS')
     memo = models.TextField(u'备注',blank=True,null=True)
     create_date = models.DateTimeField(u'创建时间', blank=True,auto_now_add=True)
     update_date = models.DateTimeField(u'更新时间',blank=True,null=True)
 
     class Meta:
-        verbose_name = u'RAM'
-        verbose_name_plural = u'RAM'
+        verbose_name = u'磁盘'
+        verbose_name_plural = u'磁盘'
         unique_together = ("asset", "slot")
-    auto_create_fields = ['sn', 'slot', 'manufactory', 'model','capacity','disk_iface']
+    auto_create_fields = ['sn', 'slot', 'manufactory', 'model','capacity','iface_type']
 
     def __str__(self):
         return '%s:slot:%s capacity:%s' % (self.asset_id, self.slot, self.capacity)

@@ -1,4 +1,4 @@
-from cmdb_client.plugins import plugin_api
+from plugins import plugin_api
 import json,platform,sys
 
 class InfoCollection(object):

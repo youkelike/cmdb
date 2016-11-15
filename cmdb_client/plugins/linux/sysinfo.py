@@ -6,7 +6,7 @@ def collect():
     raw_data = {}
     for key in filter_keys:
         try:
-            cmd_res = os.system('sudo dmidecode -t system|grep "%s"' % key)
+            cmd_res = os.popen('sudo dmidecode -t system|grep "%s"' % key).read()
             cmd_res = cmd_res.strip()
             res_to_list = cmd_res.split(':')
             if len(res_to_list)>1:
@@ -27,6 +27,8 @@ def collect():
     data.update(raminfo())
     data.update(nicinfo())
     data.update(diskinfo())
+    # for k,v in data.items():
+    #     print(k,v)
     return data
 
 def diskinfo():
@@ -34,7 +36,7 @@ def diskinfo():
     return obj.linux()
 
 def nicinfo():
-    raw_data = os.system('ifconfig -a')
+    raw_data = os.popen('ifconfig -a').read()
     raw_data = raw_data.split('\n')
     nic_dic = {}
     next_ip_line = False
@@ -86,7 +88,7 @@ def nicinfo():
     return {'nic':nic_list}
 
 def raminfo():
-    raw_data = os.system('sudo dmidecode -t 17')
+    raw_data = os.popen('sudo dmidecode -t 17').read()
     raw_list = raw_data.split('\n')
     raw_ram_list = []
     item_list = []
@@ -124,7 +126,7 @@ def raminfo():
             pass
         else:
             ram_list.append(ram_item_to_dic)
-    raw_total_size = os.system('cat /proc/meminfo|grep MemTotal').split(':')
+    raw_total_size = os.popen('cat /proc/meminfo|grep MemTotal').read().split(':')
     ram_data = {'ram':raw_list}
     if len(raw_total_size) == 2:
         total_mb_size = int(raw_total_size[1].split()[0]) / 1024
@@ -133,8 +135,8 @@ def raminfo():
     return ram_data
 
 def osinfo():
-    distributor = os.system('lsb_release -a|grep "Distributor ID"').split(':')
-    release = os.system('lsb_release -a|grep Description').split(':')
+    distributor = os.popen('lsb_release -a|grep "Distributor ID"').read().split(':')
+    release = os.popen('lsb_release -a|grep Description').read().split(':')
     data_dic = {
         'os_distribution': distributor[1].strip() if len(distributor)>1 else None,
         'os_release':release[1].strip() if len(release)>1 else None,
@@ -151,7 +153,7 @@ def cpuinfo():
     }
     for k,cmd in raw_data.items():
         try:
-            cmd_res = os.system(cmd)
+            cmd_res = os.popen(cmd).read()
             raw_data[k] = cmd_res.strip()
         except ValueError as e:
             print(e)
@@ -172,7 +174,7 @@ class DiskPlugin(object):
         try:
             script_path = os.path.dirname(os.path.abspath(__file__))
             shell_command = 'sudo %s/MegaCli -PDList -aALL' % script_path
-            output = os.system(shell_command)
+            output = os.popen(shell_command).read()
             result['physical_disk_driver'] = self.parse(output[1])
         except Exception as e:
             result['error'] = e
@@ -213,4 +215,4 @@ class DiskPlugin(object):
         return False
 
 if __name__ == '__main__':
-    print(DiskPlugin.linux())
+    print(collect())

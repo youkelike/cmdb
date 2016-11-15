@@ -16,13 +16,14 @@ Including another URLconf
 from django.conf.urls import url,include
 from django.contrib import admin
 
-from assets import rest_urls,urls as asset_urls
+from assets import rest_urls
+from assets import urls as asset_urls
 from cmdb import views
 
 urlpatterns = [
     url(r'^admin/', admin.site.urls),
     url(r'^api/', include(rest_urls)),
-    # url(r'^asset/', include(asset_urls)),
+    url(r'^asset/', include(asset_urls)),
     url(r'^$', views.index,name='dashboard'),
     url(r'^login/', views.acc_login,name='login'),
 ]

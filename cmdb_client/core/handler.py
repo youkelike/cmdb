@@ -1,6 +1,6 @@
-from cmdb_client.core import info_collection,api_token
-from cmdb_client.conf import settings
-import urllib,sys,os,json,datetime
+from core import info_collection,api_token
+from conf import settings
+import urllib,sys,os,json,datetime,urllib.parse,urllib.request
 
 
 class ArgvHandler(object):
@@ -20,7 +20,7 @@ class ArgvHandler(object):
 
     def help_msg(self):
         '''
-        由于资产数据更新并不频繁，建议不使用系统的crontab，每天执行一次collect_data就行
+        由于资产数据更新并不频繁，建议使用系统的crontab，每天执行一次collect_data就行
         '''
         msg = '''
         collect_data
@@ -36,6 +36,7 @@ class ArgvHandler(object):
         print(asset_data)
 
     def run_forever(self):
+        '''不需要'''
         pass
 
     def __attach_token(self,url_str):
@@ -57,6 +58,7 @@ class ArgvHandler(object):
         :return:
         '''
         if action_type in settings.Params['urls']:
+            #没有在配置中写端口号，就默认是80
             if type(settings.Params['port']) is int:
                 url = 'http://%s:%s%s' % (settings.Params['server'],settings.Params['port'],settings.Params['urls'][action_type])
             else:
@@ -75,12 +77,13 @@ class ArgvHandler(object):
             elif method == 'post':
                 try:
                     data_encode = urllib.parse.urlencode(data)
-                    req = urllib.request.Request(url='http://www.baidu.com',
+                    req = urllib.request.Request(url=url,
                                                 data=data_encode.encode(encoding='utf-8', errors='ignore'),
                                                 method='POST')
                     req.add_header('Content-Type','application/x-www-form-urlencoded')
                     res = urllib.request.urlopen(req, timeout=settings.Params['request_timeout']).read()
-                    res = json.loads(res)
+                    # print(res)
+                    # res = json.loads(str(res))
                     print('\033[31;1m[%s]:[%s]\033[0m response:\n%s' % (method,url,res))
                     return res
                 except Exception as e:
@@ -115,12 +118,18 @@ class ArgvHandler(object):
             asset_data['asset_id'] = asset_id
             post_url = 'asset_report'
         else:#说明是第一次提交资产信息
+            #必须要加上这个字段，才能在服务端通过数据合法验证
             asset_data['asset_id'] = None
             post_url = 'asset_report_with_no_id'
         data = {'asset_data':json.dumps(asset_data)}
         response = self.__submit_data(post_url,data,method='post')
-        if 'asset_id' in response:
-            self.__update_asset_id(response['asset_id'])
+        if type(response) is bytes:
+            pass
+        else:
+            print(type(json.loads(response)))
+            response = json.loads(response)
+            if 'asset_id' in response:
+                self.__update_asset_id(response['asset_id'])
 
         self.log_record(response)
 

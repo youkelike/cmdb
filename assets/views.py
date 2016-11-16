@@ -10,9 +10,10 @@ from assets import models,core,asset_handle,utils
 @utils.token_required
 def asset_report(request):
     if request.method == 'POST':
-        ass_handler = core.Asset(request)
-        if ass_handler.data_is_valid():
-            ass_handler.data_inject()
+        ass_handler = core.Asset(request)#传入request实例化core模块
+        if ass_handler.data_is_valid():# 只有数据合法，并且从数据库中匹配到了资产才会返回True
+            # ass_handler.data_inject()
+            ass_handler.update_asset()# 不用判断是插入还是更新了，直接更新数据库
 
         return HttpResponse(json.dumps(ass_handler.response))
 

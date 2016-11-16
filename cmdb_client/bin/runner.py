@@ -7,7 +7,7 @@ else:
     BASE_DIR = '/'.join(os.path.abspath(os.path.dirname(__file__)).split('/')[:-1])
 
 sys.path.append(BASE_DIR)
-print(sys.path)
+# print(sys.path)
 
 from core import handler
 

@@ -5,18 +5,25 @@ from assets import models
 
 class Asset(object):
     def __init__(self,request):
+        '''
+        通过request接收用户数据，定义一些全局设置
+        '''
         self.request = request
+        # 检测传入数据中必须存在的字段
         self.mandatory_fields = ['sn','asset_id','asset_type']
-        self.field_sets = {
-            'asset':['manufactory',],
-            'server':['model','cpu_count','cpu_core_count','cpu_model','raid_type','os_type','os_distribution','os_release'],
-            'networkdevice':[]
-        }
+        # 返回数据格式
         self.response = {
             'error':[],
             'info':[],
             'warning':[]
         }
+        # 从数据库中取出的资产数据对象
+        self.asset_obj = None
+        # 用户传入的数据合法，就会赋值给这个变量
+        self.clean_data = None
+        # 标记传入的资产数据是否是新资产
+        self.waiting_approval = False
+
 
     def response_msg(self,msg_type,key,msg):
         if msg_type in self.response:
@@ -25,12 +32,18 @@ class Asset(object):
             raise ValueError
 
     def mandatory_check(self,data,only_check_sn=False):
+        '''
+        先做数据合法性验证：只判断是否存在必须的字段
+        通过验证后再尝试去数据库中匹配已有记录，匹配到了就取出数据对象，没匹配到就标记为新资产
+        只有通过合法验证并取得数据库中的数据才返回True
+        '''
         for field in self.mandatory_fields:
             if field not in data:
                 self.response_msg('error','MandatoryCheckFailed','Field [%s] not provided!' % field)
         else:
             if self.response['error']:return False
         try:
+            # 尝试取出数据对象
             if not only_check_sn:
                 self.asset_obj = models.Asset.objects.get(id=int(data['asset_id']),sn=data['sn'])
             else:
@@ -38,21 +51,30 @@ class Asset(object):
             return True
         except ObjectDoesNotExist as e:
             self.response_msg('error','AssetDataInvalid','None asset matched by using asset id [%s] and SN [%s]' % (data['asset_id'],data['sn']))
+            # 没匹配到就标记为新资产
             self.waiting_approval = True
             return False
 
     def get_asset_id_by_sn(self):
+        '''
+        处理提交的数据中没有asset_id的情况
+        可能是新资产，也可能是资产asset_id丢失的情况
+        :return:
+        '''
         data = self.request.POST.get('asset_data')
         response = {}
         if data:
             try:
                 data = json.loads(data)
+                # 通过验证，一定会得到数据库中的数据对象，
+                # 说明不是新资产，而是资产asset_id丢失了，返回asset_id
                 if self.mandatory_check(data,only_check_sn=True):
                     response = {'asset_id':self.asset_obj.id}
-                else:
+                else:# 验证不通过则可能是新资产，也可能是数据无效
                     if hasattr(self,'waiting_approval'):
                         response = {'needs_approval':'this is a new asset, needs admin approval!'}
                         self.clean_data = data
+                        # 把新资产数据存入资产审批表
                         self.save_new_asset_to_approval_zone()
                         print(response)
                     else:
@@ -66,8 +88,12 @@ class Asset(object):
         return response
 
     def save_new_asset_to_approval_zone(self):
+        '''
+        把数据加入到资产审批表
+        :return:
+        '''
         asset_sn = self.clean_data.get('sn')
-        print('******ram',self.clean_data.get('ram'))
+        # 只在第一次新资产提交时才会被加入到审批表
         asset_already_in_approval_zone,created = models.NewAssetApprovalZone.objects.update_or_create(sn=asset_sn,
                                                                                                       defaults={'data':json.dumps(self.clean_data),
                                                                                                         'manufactory':self.clean_data.get('manufactory'),
@@ -87,6 +113,10 @@ class Asset(object):
         return True
 
     def data_is_valid(self):
+        '''
+        提交带有asset_id资产的数据合法性验证
+        只有数据合法，并且从数据库中匹配到了资产才会返回True
+        '''
         data = self.request.POST.get('asset_data')
         if data:
             try:
@@ -99,12 +129,21 @@ class Asset(object):
                 self.response_msg('error','AssetDataInvalid','The reported asset data is not valid!')
 
     def __is_new_asset(self):
+        '''
+        Asset表中的的数据属于业务数据，可以手动录入。
+        这就存在一种情况：可以通过sn或asset_id找到Asset表中的记录，这条Asset记录却没有关联任何设备。
+        所以不能仅仅通过是否匹配到Asset记录来判断是否为新资产，还要看它是否关联了某种设备
+        '''
         if not hasattr(self.asset_obj,self.clean_data['asset_type']):
             return True
         else:
             return False
 
     def data_inject(self):
+        '''
+        根据需要插入或更新资产数据
+        :return:
+        '''
         if self.__is_new_asset():
             print('\033[32;1m--- new asset going to create --- \033[0m')
             self.create_asset()
@@ -129,6 +168,9 @@ class Asset(object):
             self.response_msg('error','AssetDataInvalid','The reported asset data is invalid!')
 
     def __verify_field(self,data_set,field_key,data_type,required=True):
+        '''
+        验证数据对象中的某个属性是否必须存在，属性的值类型是否匹配、
+        '''
         field_val = data_set.get(field_key)
         if field_val or field_val==0:
             try:
@@ -139,10 +181,12 @@ class Asset(object):
             self.response_msg('error','LackOfField','The field [%s] not provided in [%s]' % (field_key,data_set))
 
     def create_asset(self):
+        '''使用反射机制调用新建资产方法'''
         func = getattr(self,'_create_%s' % self.clean_data['asset_type'])
         create_obj = func()
 
     def update_asset(self):
+        '''使用反射机制调用更新资产方法'''
         func = getattr(self,'_update_%s' % self.clean_data['asset_type'])
         create_obj = func()
 
@@ -167,6 +211,9 @@ class Asset(object):
         server = self.__update_server_component()
 
     def _create_server(self):
+        '''
+        新建资产包括了在各种关联表中新建记录
+        '''
         self.__create_server_info()
         self.__create_or_update_manufactory()
         self.__create_cpu_component()
@@ -211,6 +258,7 @@ class Asset(object):
             self.response_msg('error','ObjectCreationException','Object [manufactory] %s ' % str(e))
 
     def __create_cpu_component(self,ignore_errs=False):
+        '''cpu只有一个'''
         try:
             self.__verify_field(self.clean_data,'model',str),
             self.__verify_field(self.clean_data,'cpu_count',int),
@@ -231,9 +279,11 @@ class Asset(object):
             self.response_msg('error','ObjectCreationException','Object [cpu] %s' % str(e))
 
     def __create_disk_component(self):
+        '''磁盘可能有多个'''
         disk_info = self.clean_data.get('physical_disk_driver')
         print('*****disk info:',disk_info)
         if disk_info:
+            obj_arr = []
             for disk_item in disk_info:
                 try:
                     self.__verify_field(disk_item,'slot',str)
@@ -251,15 +301,21 @@ class Asset(object):
                             'manufactory':disk_item.get('manufactory')
                         }
                         obj = models.Disk(**data_set)
-                        obj.save()
+                        obj_arr.append(obj)
+                        # obj.save()
                 except Exception as e:
                     self.response_msg('error', 'ObjectCreationException', 'Object [disk] %s' % str(e))
+            # 批量创建
+            if len(obj_arr>0):
+                models.Disk.objects.bulk_create(*obj_arr)
         else:
             self.response_msg('error', 'LackOfData', 'Disk info is not provied in your reporting data')
 
     def __create_nic_component(self):
+        '''网卡可能有多个'''
         nic_info = self.clean_data.get('nic')
         if nic_info:
+            obj_arr = []
             for nic_item in nic_info:
                 try:
                     self.__verify_field(nic_item,'macaddress',str)
@@ -276,16 +332,21 @@ class Asset(object):
                         }
 
                         obj = models.NIC(**data_set)
-                        obj.save()
-
+                        # obj.save()
+                        obj_arr.append(obj)
                 except Exception as e:
                     self.response_msg('error','ObjectCreationException','Object [nic] %s' % str(e) )
+            # 批量创建
+            if len(obj_arr>0):
+                models.NIC.objects.bulk_create(*obj_arr)
         else:
             self.response_msg('error', 'LackOfData', 'NIC info is not provied in your reporting data')
 
     def __create_ram_component(self):
+        '''内存可能有多个'''
         ram_info = self.clean_data.get('ram')
         if ram_info:
+            obj_arr = []
             for ram_item in ram_info:
                 try:
                     self.__verify_field(ram_item,'capacity',int)
@@ -299,10 +360,13 @@ class Asset(object):
                         }
 
                         obj = models.RAM(**data_set)
-                        obj.save()
-
+                        # obj.save()
+                        obj_arr.append(obj)
                 except Exception as e:
                     self.response_msg('error','ObjectCreationException','Object [ram] %s' % str(e) )
+            # 批量创建
+            if len(obj_arr>0):
+                models.RAM.objects.bulk_create(*obj_arr)
         else:
                 self.response_msg('error','LackOfData','RAM info is not provied in your reporting data' )
 

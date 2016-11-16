@@ -15,7 +15,7 @@ def json_datetime_handler(obj):
 def gen_token(username,timestamp,token):
     token_format = '%s\n%s\n%s' % (username,timestamp,token)
     obj = hashlib.md5()
-    obj.update(token_format)
+    obj.update(token_format.encode(encoding='utf-8'))
     return obj.hexdigest()[10:17]
 
 def token_required(func):

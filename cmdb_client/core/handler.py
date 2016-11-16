@@ -106,8 +106,9 @@ class ArgvHandler(object):
 
     def __update_asset_id(self,new_asset_id):
         asset_id_file = settings.Params['asset_id']
-        f = open(asset_id_file,'wb')
-        f.write(new_asset_id)
+        print(asset_id_file)
+        f = open(asset_id_file,'w')
+        f.write(str(new_asset_id))
         f.close()
 
     def report_asset(self):
@@ -117,19 +118,18 @@ class ArgvHandler(object):
         if asset_id:#本地已经记录了资产id，说明资产信息已经有记录
             asset_data['asset_id'] = asset_id
             post_url = 'asset_report'
-        else:#说明是第一次提交资产信息
+        else:#说明是第一次提交资产信息,或者asset_id丢失了
             #必须要加上这个字段，才能在服务端通过数据合法验证
             asset_data['asset_id'] = None
             post_url = 'asset_report_with_no_id'
         data = {'asset_data':json.dumps(asset_data)}
         response = self.__submit_data(post_url,data,method='post')
-        if type(response) is bytes:
-            pass
-        else:
-            print(type(json.loads(response)))
-            response = json.loads(response)
-            if 'asset_id' in response:
-                self.__update_asset_id(response['asset_id'])
+        # 返回的json字节串需要解码后才能反序列化
+        response = response.decode('utf-8')
+        response = json.loads(response)
+
+        if 'asset_id' in response:# asset_id丢失，返回的对象里会包含asset_id
+            self.__update_asset_id(response['asset_id'])
 
         self.log_record(response)
 
@@ -137,7 +137,7 @@ class ArgvHandler(object):
         '''
         自定一的日志记录
         '''
-        f = open(settings.Params['log_file'],'ab')
+        f = open(settings.Params['log_file'],'a')
         if log is str:
             pass
         if type(log) is dict:

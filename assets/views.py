@@ -9,6 +9,7 @@ from assets import models,core,asset_handle,utils
 @csrf_exempt
 @utils.token_required
 def asset_report(request):
+    ''''处理客户端已经保存了asset_id情况下的数据提交'''
     if request.method == 'POST':
         ass_handler = core.Asset(request)#传入request实例化core模块
         if ass_handler.data_is_valid():# 只有数据合法，并且从数据库中匹配到了资产才会返回True
@@ -21,23 +22,25 @@ def asset_report(request):
 
 @csrf_exempt
 def asset_with_no_asset_id(request):
+    ''''处理客户端没有asset_id情况下的数据提交'''
     if request.method == 'POST':
         ass_handler = core.Asset(request)
         res = ass_handler.get_asset_id_by_sn()
         return HttpResponse(json.dumps(res))
 
 def new_assets_approval(request):
+    '''新资产审批'''
     if request.method == 'POST':
         request.POST = request.POST.copy()
         approved_asset_list = request.POST.getlist('approved_asset_list')
         approved_asset_list = models.NewAssetApprovalZone.objects.filter(id__in=approved_asset_list)
         response_dic = {}
         for obj in approved_asset_list:
-            request.POST['asset_data'] = obj.data
+            request.POST['asset_data'] = obj.data# data字段里存储的就是序列化的json字符串
             ass_handler = core.Asset(request)
             if ass_handler.data_is_valid_without_id():
-                ass_handler.data_inject()
-                obj.approved = True
+                ass_handler.data_inject()# 插入或更新资产数据
+                obj.approved = True# 更改当前待审批记录状态
                 obj.save()
             response_dic[obj.id] = ass_handler.response
         return render(request,'assets/new_assets_approval.html',{'new_assets':approved_asset_list,

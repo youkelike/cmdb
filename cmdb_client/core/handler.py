@@ -40,6 +40,7 @@ class ArgvHandler(object):
         pass
 
     def __attach_token(self,url_str):
+        '''给请求URL加上token参数'''
         user = settings.Params['auth']['user']
         token_id = settings.Params['auth']['token']
         md5_token,timestamp = api_token.get_token(user,token_id)
@@ -52,10 +53,10 @@ class ArgvHandler(object):
 
     def __submit_data(self,action_type,data,method):
         '''
+        构建http请求发送数据到服务器
         :param action_type:
         :param data: 字典形式的参数
         :param method: 小写的get/post
-        :return:
         '''
         if action_type in settings.Params['urls']:
             #没有在配置中写端口号，就默认是80
@@ -91,8 +92,8 @@ class ArgvHandler(object):
         else:
             raise KeyError
 
-    #资产id存储在本地文件中
     def load_asset_id(self):
+        '''从本地文件中取出资产id'''
         asset_id_file = settings.Params['asset_id']
         has_asset_id = False
         if os.path.isfile(asset_id_file):
@@ -112,6 +113,10 @@ class ArgvHandler(object):
         f.close()
 
     def report_asset(self):
+        '''
+        如果本地已经记录了asset_id，直接请求/asset/report/，如果服务器未找到匹配的记录就返回错误，找到了就更新
+        如果本地没有asset_id，就请求/asset/report/asset_with_no_asset_id/，结果可能是提交新资产待审核或者返回丢失的asset_id，或者提示数据不合法
+        '''
         obj = info_collection.InfoCollection()
         asset_data = obj.collect()
         asset_id = self.load_asset_id()
@@ -127,15 +132,15 @@ class ArgvHandler(object):
         # 返回的json字节串需要解码后才能反序列化
         response = response.decode('utf-8')
         response = json.loads(response)
-
-        if 'asset_id' in response:# asset_id丢失，返回的对象里会包含asset_id
+        # asset_id丢失，返回的对象里会包含asset_id，存储到本地文件
+        if 'asset_id' in response:
             self.__update_asset_id(response['asset_id'])
-
+        # 提交结果记录日志
         self.log_record(response)
 
     def log_record(self,log,action_type=None):
         '''
-        自定一的日志记录
+        自定义的日志记录
         '''
         f = open(settings.Params['log_file'],'a')
         if log is str:

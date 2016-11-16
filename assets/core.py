@@ -26,6 +26,9 @@ class Asset(object):
 
 
     def response_msg(self,msg_type,key,msg):
+        '''
+        通用的日志收集方法
+        '''
         if msg_type in self.response:
             self.response[msg_type].append({key:msg})
         else:
@@ -59,7 +62,6 @@ class Asset(object):
         '''
         处理提交的数据中没有asset_id的情况
         可能是新资产，也可能是资产asset_id丢失的情况
-        :return:
         '''
         data = self.request.POST.get('asset_data')
         response = {}
@@ -90,7 +92,6 @@ class Asset(object):
     def save_new_asset_to_approval_zone(self):
         '''
         把数据加入到资产审批表
-        :return:
         '''
         asset_sn = self.clean_data.get('sn')
         # 只在第一次新资产提交时才会被加入到审批表
@@ -142,7 +143,6 @@ class Asset(object):
     def data_inject(self):
         '''
         根据需要插入或更新资产数据
-        :return:
         '''
         if self.__is_new_asset():
             print('\033[32;1m--- new asset going to create --- \033[0m')
@@ -152,11 +152,12 @@ class Asset(object):
             self.update_asset()
 
     def data_is_valid_without_id(self):
+        '''用户新资产审批时判断资产数据是否合法'''
         data = self.request.POST.get('asset_data')
         if data:
             try:
                 data = json.loads(data)
-                asset_obj = models.Asset.objects.get_or_create(sn=data.get('sn'),name=data.get('sn'))
+                asset_obj,created = models.Asset.objects.get_or_create(sn=data.get('sn'),name=data.get('sn'))# Asset表的记录是可以手动创建的
                 data['asset_id'] = asset_obj[0].id
                 self.mandatory_check(data)
                 self.clean_data = data
@@ -191,16 +192,23 @@ class Asset(object):
         create_obj = func()
 
     def _update_server(self):
+        '''
+        更新资产中与server相关的记录
+        每个表中都可能有人工填写的字段，不需要自动更新，所以每个表都要指定需要自动更新的字段
+        '''
+        #每个server可能有多个nic，用macaddress来一一匹配更新
         nic = self.__update_asset_component(data_source=self.clean_data['nic'],
                                             fk='nic_set',
                                             update_fields=['name','sn','model','macaddress','ipaddress','netmask','bonding'],
                                             identify_field='macaddress'
                                             )
+        # 每个server可能有多个disk，用slot来一一匹配更新
         disk = self.__update_asset_component(data_source=self.clean_data['physical_disk_driver'],
                                              fk='disk_set',
                                              update_fields=['slot','sn','model','manufactory','capacity','iface_type'],
                                              identify_field='slot'
                                              )
+        # 每个server可能有多个ram，用slot来一一匹配更新
         ram = self.__update_asset_component(data_source=self.clean_data['ram'],
                                             fk='ram_set',
                                             update_fields=['slot','sn','model','capacity'],
@@ -260,6 +268,7 @@ class Asset(object):
     def __create_cpu_component(self,ignore_errs=False):
         '''cpu只有一个'''
         try:
+            # 先做字段值类型验证
             self.__verify_field(self.clean_data,'model',str),
             self.__verify_field(self.clean_data,'cpu_count',int),
             self.__verify_field(self.clean_data,'cpu_core_count',int),
@@ -306,7 +315,7 @@ class Asset(object):
                 except Exception as e:
                     self.response_msg('error', 'ObjectCreationException', 'Object [disk] %s' % str(e))
             # 批量创建
-            if len(obj_arr>0):
+            if len(obj_arr)>0:
                 models.Disk.objects.bulk_create(*obj_arr)
         else:
             self.response_msg('error', 'LackOfData', 'Disk info is not provied in your reporting data')
@@ -337,7 +346,7 @@ class Asset(object):
                 except Exception as e:
                     self.response_msg('error','ObjectCreationException','Object [nic] %s' % str(e) )
             # 批量创建
-            if len(obj_arr>0):
+            if len(obj_arr)>0:
                 models.NIC.objects.bulk_create(*obj_arr)
         else:
             self.response_msg('error', 'LackOfData', 'NIC info is not provied in your reporting data')
@@ -365,7 +374,7 @@ class Asset(object):
                 except Exception as e:
                     self.response_msg('error','ObjectCreationException','Object [ram] %s' % str(e) )
             # 批量创建
-            if len(obj_arr>0):
+            if len(obj_arr)>0:
                 models.RAM.objects.bulk_create(*obj_arr)
         else:
                 self.response_msg('error','LackOfData','RAM info is not provied in your reporting data' )
@@ -392,16 +401,29 @@ class Asset(object):
             self.__create_cpu_component(ignore_errs=True)
 
     def __update_asset_component(self,data_source,fk,update_fields,identify_field=None):
+        '''
+        判断资产中与server表有多对一关系的配件表（ram,disk,nic）信息是否需要更新
+        有需要就调用__compare_component进行更新
+        还要注意客户端有而服务端没有和服务端有而客户端没有的情况，调用__filter_add_or_deleted_components
+        :param data_source: 客户端提交的数据，格式必须是字典组成的列表
+        :param fk:
+        :param update_fields:
+        :param identify_field:
+        :return:
+        '''
         try:
             component_obj = getattr(self.asset_obj,fk)
-            if hasattr(component_obj,'select_related'):
+            if hasattr(component_obj,'select_related'):#如果当前server没有关联的某个配件，就不不会有那个属性
                 objects_from_db = component_obj.select_related()
+                # 找出需要修改的
                 for obj in objects_from_db:
-                    key_field_data = getattr(obj,identify_field)
+                    key_field_data = getattr(obj,identify_field)#取到了具体的值
                     if type(data_source) is list:
+                        # 去接收到的客户端配件数据中遍历，找到identify_field字段值与当前服务端配件匹配的
                         for source_data_item in data_source:
                             key_field_data_from_source_data = source_data_item.get(identify_field)
                             if key_field_data_from_source_data:
+                                # 找到了就继续对比各自update_fields字段值是否都一致，有不一致就更新
                                 if key_field_data == key_field_data_from_source_data:
                                     self.__compare_component(model_obj=obj,fields_from_db=update_fields,data_source=source_data_item)
                                     break
@@ -416,21 +438,7 @@ class Asset(object):
                                               "AssetUpdateWarning",
                                               "Cannot find any matches in source data by using key field val [%s],component data is missing in reporting data!" % key_field_data)
 
-                    elif type(data_source) is dict:
-                        for key,source_data_item in data_source.items():
-                            key_field_data_from_source_data = source_data_item.get(identify_field)
-                            if key_field_data_from_source_data:
-                                if key_field_data == key_field_data_from_source_data:
-                                    self.__compare_component(model_obj=obj,fields_from_db=update_fields,data_source=source_data_item)
-                                    break
-                            else:
-                                self.response_msg('warning', 'AssetUpdateWarning',
-                                                  "Asset component [%s]'s key field [%s] is not provided in reporting data " % (
-                                                  fk, identify_field))
-                        else:
-                            print('\033[33;1mWarning:cannot find any matches in source data by using key field val [%s],component data is missing in reporting data!\033[0m' % key_field_data)
-                    else:
-                        print('\033[31;1mMust be sth wrong,logic should goes to here at all.\033[0m')
+                # 找出需要新增或删除的
                 self.__filter_add_or_deleted_components(model_obj_name=component_obj.model._meta.object_name,data_from_db=objects_from_db,data_source=data_source,identify_field=identify_field)
             else:
                 pass
@@ -438,29 +446,41 @@ class Asset(object):
             print('\033[41;1m%s\033[0m' % str(e))
 
     def __filter_add_or_deleted_components(self,model_obj_name,data_from_db,data_source,identify_field):
-        data_source_key_list = []
-        if type(data_source) is list:
-            for data in data_source:
-                data_source_key_list.append(data.get(identify_field))
-        elif type(data_source) is dict:
-            for key,data in data_source.items():
-                if data.get(identify_field):
-                    data_source_key_list.append(data.get(identify_field))
-                else:
-                    data_source_key_list.append(key)
-        print('-->identify field [%s] from db  :', data_source_key_list)
-        print('-->identify[%s] from data source:', [getattr(obj, identify_field) for obj in data_from_db])
-        data_source_key_list = set(data_source_key_list)
+        '''
+        分别找出需要添加和删除的记录
+        调用__delete_components删除
+        调用__add_components添加
+        :param model_obj_name: 表名
+        :param data_from_db: 服务端数据对象
+        :param data_source: 客户端提交的数据，格式必须是字典组成的列表
+        :param identify_field:
+        :return:
+        '''
+        # 保存客户端提交数据中identify_field字段对应的所有值，然后转成集合
+        data_source_key_list = set([data.get(identify_field) for data in data_source])
+        # 取出服务端数据中identify_field字段对应的所有值，转成集合
         data_identify_val_from_db = set([getattr(obj,identify_field) for obj in data_from_db])
+
+        # 求差集
         data_only_in_db = data_identify_val_from_db - data_source_key_list
         data_only_in_data_source = data_source_key_list - data_identify_val_from_db
         print('\033[31;1mdata_only_in_db:\033[0m', data_only_in_db)
         print('\033[31;1mdata_only_in_data source:\033[0m', data_only_in_data_source)
+
+        # 删除和添加
         self.__delete_components(all_components=data_from_db,delete_list=data_only_in_db,identify_field=identify_field)
         if data_only_in_data_source:
             self.__add_components(model_obj_name=model_obj_name,all_components=data_source,add_list=data_only_in_data_source,identify_field=identify_field)
 
     def __add_components(self,model_obj_name,all_components,add_list,identify_field):
+        '''
+        添加记录
+        :param model_obj_name: 表名
+        :param all_components: 客户端提交的数据，格式必须是字典组成的列表
+        :param add_list: 客户端数据中，需要新增的数据中identify_field字段值组成的列表
+        :param identify_field:
+        :return:
+        '''
         model_class = getattr(models,model_obj_name)
         will_be_creating_list = []
         print('--- add component list: %s ---' % add_list)
@@ -468,15 +488,10 @@ class Asset(object):
             for data in all_components:
                 if data[identify_field] in add_list:
                     will_be_creating_list.append(data)
-        elif type(all_components) is dict:
-            for k,data in all_components.items():
-                if data.get(identify_field):
-                    if data[identify_field] in add_list:
-                        will_be_creating_list.append(data)
         try:
             for component in will_be_creating_list:
                 data_set = {}
-                for field in model_class.auto_create_fields:
+                for field in model_class.auto_create_fields:# 表结构中有定义auto_create_fields
                     data_set[field] = component.get(field)
                 data_set['asset_id'] = self.asset_obj.id
                 obj = model_class(**data_set)
@@ -491,6 +506,13 @@ class Asset(object):
             self.response_msg('error',"AddingComponentException",log_msg)
 
     def __delete_components(self,all_components,delete_list,identify_field):
+        '''
+        删除记录
+        :param all_components: 服务端数据
+        :param delete_list: 服务端数据中，需要删除的记录中identify_field字段值组成的列表
+        :param identify_field:
+        :return:
+        '''
         deleting_obj_list = []
         print('--- deleting components',delete_list,identify_field)
         for obj in all_components:
@@ -504,23 +526,37 @@ class Asset(object):
             i.delete()
 
     def __compare_component(self,model_obj,fields_from_db,data_source):
+        '''
+        更新指定的字段值
+        :param model_obj: 服务端取出的数据
+        :param fields_from_db: 需要检查是否改变的字段
+        :param data_source: 客户端发过来的数据
+        :return:
+        '''
         for field in fields_from_db:
-            val_from_db = getattr(model_obj,field)
-            val_from_data_source = data_source.get(field)
+            val_from_db = getattr(model_obj,field)#取出了服务端表中的字段值
+            val_from_data_source = data_source.get(field)#取出了客户端数据中的字段值
             if val_from_data_source:
+                # 比较值前先做值类型转换
                 if type(val_from_db) is str:val_from_data_source = str(val_from_data_source)
                 elif type(val_from_db) is int:val_from_data_source = int(val_from_data_source)
                 elif type(val_from_db) is float:val_from_data_source = float(val_from_data_source)
-                if val_from_db == val_from_data_source:
+                if val_from_db == val_from_data_source:# 当前字段没变化就不需要更新
                     pass
                 else:
                     print('\033[34;1m val_from_db[%s]  != val_from_data_source[%s]\033[0m' %(val_from_db,val_from_data_source),type(val_from_db),type(val_from_data_source))
-                    db_field = model_obj._meta.get_field(field)
-                    db_field.save_form_data(model_obj,val_from_data_source)
+                    # 这里更改字段值的方式有技巧
+                    # django更新字段值的方式：
+                    # obj.name = 'a'; obj.save()
+                    # 但是取对象属性时，属性名不能做变量解析，即obj.name中的name不能是一个变量名
+                    # 而这里的字段名field就是一个变量，就不能简单的使用obj.field='a'的方式了
+                    db_field = model_obj._meta.get_field(field)# 获取字段的类型
+                    db_field.save_form_data(model_obj,val_from_data_source)# 通过字段类型来改值
                     model_obj.update_date = timezone.now()
                     model_obj.save()
                     log_msg = "Asset[%s] --> component[%s] --> field[%s] has changed from [%s] to [%s]" % (self.asset_obj, model_obj, field, val_from_db, val_from_data_source)
                     self.response_msg('info', 'FieldChanged', log_msg)
+                    # 记录日志
                     log_handler(self.asset_obj, 'FieldChanged', self.request.user, log_msg, model_obj)
             else:
                 self.response_msg('warning','AssetUpdateWarning',"Asset component [%s]'s field [%s] is not provided in reporting data " % (model_obj,field) )
@@ -528,6 +564,7 @@ class Asset(object):
         model_obj.save()
 
 def log_handler(asset_obj,event_name,user,detail,component=None):
+    '''自定义的日志记录'''
     log_catelog = {
         1:['FieldChanged','HardwareChanges'],
         2:['NewComponentAdded']

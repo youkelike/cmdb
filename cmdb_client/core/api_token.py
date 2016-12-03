@@ -1,6 +1,7 @@
 import hashlib,time
 
 def get_token(username,token_id):
+    '''生成token字符串'''
     timestamp = int(time.time())
     md5_format_str = '%s\n%s\n%s' % (username,timestamp,token_id)
     obj = hashlib.md5()

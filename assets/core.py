@@ -157,7 +157,7 @@ class Asset(object):
         if data:
             try:
                 data = json.loads(data)
-                asset_obj,created = models.Asset.objects.get_or_create(sn=data.get('sn'),name=data.get('sn'))# Asset表的记录是可以手动创建的
+                asset_obj = models.Asset.objects.get_or_create(sn=data.get('sn'),name=data.get('sn'))# Asset表的记录是可以手动创建的
                 data['asset_id'] = asset_obj[0].id
                 self.mandatory_check(data)
                 self.clean_data = data
